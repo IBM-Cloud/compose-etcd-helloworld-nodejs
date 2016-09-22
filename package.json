@@ -1,0 +1,32 @@
+{
+  "name": "compose-etcd-helloworld-nodejs",
+  "version": "0.0.0",
+  "dependencies": {
+    "body-parser": "^1.15.2",
+    "cf-deployment-tracker-client": "*",
+    "cfenv": "1.0.x",
+    "express": "~4.x",
+    "http-post": "^0.1.1",
+    "http-proxy": "^1.8.1",
+    "node-etcd": "^5.0.3"
+  },
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/IBM-Bluemix/compose-etcd-helloworld-nodejs.git"
+  },
+  "author": "IBM Corp.",
+  "contributors": [
+    {
+      "name": "Neil Dewhurst",
+      "email": "ndewhurs@uk.ibm.com"
+    }
+  ],
+  "bugs": {
+    "url": "https://github.com/IBM-Bluemix/compose-etcd-helloworld-nodejs/issues"
+  },
+  "license": "Apache-2.0"
+}
