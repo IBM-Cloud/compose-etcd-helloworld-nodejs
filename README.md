@@ -35,7 +35,13 @@ compose-etcd-helloworld-nodejs is a sample Bluemix application which shows you h
   $ cf create-service compose-for-etcd Standard my-compose-for-etcd-service
   ```
 
-8. Push the app to Bluemix.
+8. Bind the service to the application.
+
+  ```
+  $ cf bind-service compose-etcd-helloworld-nodejs my-compose-for-etcd-service
+  ```
+  
+9. Push the app to Bluemix.
 
   ```
   $ cf push
