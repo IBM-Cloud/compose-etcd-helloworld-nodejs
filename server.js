@@ -45,10 +45,10 @@ var services = appenv.services;
 // The services object is a map named by service so we extract the one for etcd
 var etcd_services = services["compose-for-etcd"];
 
-// This check ensures there is a services for MongoDB databases
+// This check ensures there is a services for etcd databases
 assert(!util.isUndefined(etcd_services), "Must be bound to compose-for-etcd services");
 
-// We now take the first bound MongoDB service and extract it's credentials object
+// We now take the first bound etcd service and extract it's credentials object
 var credentials = etcd_services[0].credentials;
 
 // Within the credentials, an entry ca_certificate_base64 contains the SSL pinning key
@@ -89,7 +89,7 @@ app.put("/words", function(request, response) {
 
 });
 
-// Read from the database when someone visits /hello
+// Read from the database when someone visits /words
 app.get("/words", function(request, response) {
     // set up a new client using our config details
     var etcd = new Etcd(hosts, opts);
