@@ -1,14 +1,17 @@
 {
   "name": "compose-etcd-helloworld-nodejs",
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "engines": {
+    "node": "8.x"
+  },
   "dependencies": {
     "body-parser": "^1.15.2",
     "cf-deployment-tracker-client": "*",
     "cfenv": "1.0.x",
+    "etcd3": "^0.2.5",
     "express": "~4.x",
     "http-post": "^0.1.1",
-    "http-proxy": "^1.8.1",
-    "node-etcd": "^5.0.3"
+    "http-proxy": "^1.8.1"
   },
   "main": "server.js",
   "scripts": {
@@ -23,6 +26,9 @@
     {
       "name": "Neil Dewhurst",
       "email": "ndewhurs@uk.ibm.com"
+    },
+    { "name": "Dj Walker-Morgan",
+      "email": "djwalkermorgan@uk.ibm.com"
     }
   ],
   "bugs": {

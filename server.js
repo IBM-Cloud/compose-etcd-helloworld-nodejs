@@ -17,7 +17,7 @@
 // First add the obligatory web framework
 var express = require('express');
 var app = express();
-
+const { URL } = require("url");
 var bodyParser = require('body-parser');
 
 app.use(bodyParser.urlencoded({
@@ -33,7 +33,7 @@ const assert = require('assert');
 var port = process.env.PORT || 8080;
 
 // Then we'll pull in the database client library
-var Etcd = require('node-etcd');
+var { Etcd3 } = require('etcd3');
 
 // Now lets get cfenv and ask it to parse the environment variable
 var cfenv = require('cfenv');
@@ -45,7 +45,7 @@ var services = appenv.services;
 // The services object is a map named by service so we extract the one for etcd
 var etcd_services = services["compose-for-etcd"];
 
-// This check ensures there is a services for etcd databases
+// // This check ensures there is a services for etcd databases
 assert(!util.isUndefined(etcd_services), "Must be bound to compose-for-etcd services");
 
 // We now take the first bound etcd service and extract it's credentials object
@@ -55,61 +55,52 @@ var credentials = etcd_services[0].credentials;
 // We convert that from a string into a Buffer entry in an array which we use when
 // connecting.
 var ca = new Buffer(credentials.ca_certificate_base64, 'base64');
-//var connectionString = credentials.uri;
 
-// We want to parse uri-cli to get username, password, database name, server, port
-// So we can use those to connect to the database
+// // We want to parse uri-cli to get username, password, database name, server, port
+// // So we can use those to connect to the database
 
-var parts = credentials.uri_cli.split(" ");
-var hosts = parts[5].split(",");
-var userpass = parts[7].split(":");
-var auth = {
-    user: userpass[0],
-    pass: userpass[1]
+connection_url=new URL(credentials.uri_direct_1)
+
+var myauth = {
+    username: connection_url.username,
+    password: connection_url.password
 };
 
+var host = connection_url.origin
 
 // Create auth credentials
-var opts = {
-    auth: auth,
-    ca: ca
-}
+var ioptions={ hosts:connection_url.origin, auth: myauth, credentials: { rootCertificate: ca } }
+
+const client=new Etcd3(ioptions)
+const ns=client.namespace("/grand_tour/words/")
 
 // We can now set up our web server. First up we set it to serve static pages
 app.use(express.static(__dirname + '/public'));
 
-app.put("/words", function(request, response) {
-  // set up a new client using our config details
-  var etcd = new Etcd(hosts, opts);
+app.put("/words", async function(request, response) {
   // execute a query on our database
-  etcd.set(request.body.word,request.body.definition,function(err,result) {
-    if (err) throw err;
-    response.send("ok");
-  });
-
+  await ns.put(request.body.word).value(request.body.definition)
+  .then(x => response.send("ok"))
+  .catch(reason => console.error(reason));
 });
 
 // Read from the database when someone visits /words
-app.get("/words", function(request, response) {
-    // set up a new client using our config details
-    var etcd = new Etcd(hosts, opts);
+app.get("/words", async function(request, response) {
     // execute a query on our database
-    etcd.get('/', function(err, result) {
-      if (err) {
-        response.status(500).send(err);
-      } else {
-        // get the words from the index
-        var words = [];
-        result.node.nodes.forEach(function(word){
-          words.push( { "word" : word.key , "definition" : word.value  } );
-        });
+    await ns.getAll().strings()
+      .then(keys => {
+        words=[]
+        for (const [w,d] of Object.entries(keys)) {
+          words.push( { "word" : w , "definition" : d  } );
+        }     
         response.send(words);
-      }
-    });
+    })
+    .catch(reason => console.error(reason));    
 });
 
 
 // Now we go and listen for a connection.
+console.log("Now listening on localhost:"+port);
 app.listen(port);
 
 require("cf-deployment-tracker-client").track();
