@@ -56,20 +56,21 @@ var credentials = etcd_services[0].credentials;
 // connecting.
 var ca = new Buffer(credentials.ca_certificate_base64, 'base64');
 
-// // We want to parse uri-cli to get username, password, database name, server, port
+// // We want to parse uri to get username, password, database name, server, port
 // // So we can use those to connect to the database
 
-connection_url=new URL(credentials.uri_direct_1)
+connection_url=new URL(credentials.uri)
+connection1_url=new URL(credentials.uri_direct_1)
 
 var myauth = {
     username: connection_url.username,
     password: connection_url.password
 };
 
-var host = connection_url.origin
+var myhosts = [ connection_url.origin, connection1_url.origin ];
 
 // Create auth credentials
-var ioptions={ hosts:connection_url.origin, auth: myauth, credentials: { rootCertificate: ca } }
+var ioptions={ hosts: myhosts, auth: myauth, credentials: { rootCertificate: ca } }
 
 const client=new Etcd3(ioptions)
 const ns=client.namespace("/grand_tour/words/")
