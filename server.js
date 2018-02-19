@@ -83,8 +83,6 @@ var opts = {
     ca: ca
 };
 
-console.log(opts)
-
 var etcd = new Etcd3(opts).namespace("/example/words/");
 // We can now set up our web server. First up we set it to serve static pages
 app.use(express.static(__dirname + '/public'));
