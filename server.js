@@ -17,7 +17,7 @@
 // First add the obligatory web framework
 var express = require('express');
 var app = express();
-const { URL } = require("url");
+
 var bodyParser = require('body-parser');
 
 app.use(bodyParser.urlencoded({
@@ -33,11 +33,25 @@ const assert = require('assert');
 var port = process.env.PORT || 8080;
 
 // Then we'll pull in the database client library
-var { Etcd3 } = require('etcd3');
+const { Etcd3 } = require('etcd3');
 
 // Now lets get cfenv and ask it to parse the environment variable
 var cfenv = require('cfenv');
-var appenv = cfenv.getAppEnv();
+
+// load local VCAP configuration  and service credentials
+var vcapLocal;
+try {
+  vcapLocal = require('./vcap-local.json');
+  console.log("Loaded local VCAP", vcapLocal);
+} catch (e) { 
+  console.log(e)
+}
+
+const appEnvOpts = vcapLocal ? { vcap: vcapLocal} : {}
+
+const appenv = cfenv.getAppEnv(appEnvOpts);
+
+// var appenv = cfenv.getAppEnv();
 
 // Within the application environment (appenv) there's a services object
 var services = appenv.services;
@@ -45,63 +59,67 @@ var services = appenv.services;
 // The services object is a map named by service so we extract the one for etcd
 var etcd_services = services["compose-for-etcd"];
 
-// // This check ensures there is a services for etcd databases
+// This check ensures there is a services for etcd databases
 assert(!util.isUndefined(etcd_services), "Must be bound to compose-for-etcd services");
 
 // We now take the first bound etcd service and extract it's credentials object
-var credentials = etcd_services[0].credentials;
+var etcdCredentials = etcd_services[0].credentials;
 
 // Within the credentials, an entry ca_certificate_base64 contains the SSL pinning key
 // We convert that from a string into a Buffer entry in an array which we use when
 // connecting.
-var ca = new Buffer(credentials.ca_certificate_base64, 'base64');
-
-// // We want to parse uri to get username, password, database name, server, port
-// // So we can use those to connect to the database
-
-connection_url=new URL(credentials.uri)
-connection1_url=new URL(credentials.uri_direct_1)
-
-var myauth = {
-    username: connection_url.username,
-    password: connection_url.password
+var ca = new Buffer(etcdCredentials.ca_certificate_base64, 'base64');
+var parts = etcdCredentials.uri_cli.split(" ");
+var hosts = parts[2].substr('--endpoints='.length).split(",");
+var userpass = parts[3].substr('--user='.length).split(":");
+var auth = {
+    username: userpass[0],
+    password: userpass[1]
 };
 
-var myhosts = [ connection_url.origin, connection1_url.origin ];
+var opts = {
+    hosts: hosts,
+    auth: auth,
+    ca: ca
+};
 
-// Create auth credentials
-var ioptions={ hosts: myhosts, auth: myauth, credentials: { rootCertificate: ca } }
+console.log(opts)
 
-const client=new Etcd3(ioptions)
-const ns=client.namespace("/grand_tour/words/")
-
+var etcd = new Etcd3(opts).namespace("/example/words/");
 // We can now set up our web server. First up we set it to serve static pages
 app.use(express.static(__dirname + '/public'));
 
-app.put("/words", async function(request, response) {
-  // execute a query on our database
-  await ns.put(request.body.word).value(request.body.definition)
-  .then(x => response.send("ok"))
-  .catch(reason => console.error(reason));
+app.put("/words", function (request, response) {
+  etcd.put(request.body.word).value(request.body.definition).then(
+    (result) => {
+      response.send(result);
+    }
+  ).catch((err) => {
+    console.log(err);
+    response.status(500).send(err);
+  });
 });
 
-// Read from the database when someone visits /words
-app.get("/words", async function(request, response) {
+// Read from the database when the page is loaded or after a word is successfully added
+// Get all the keys and values from our namespace, turn them into a JSON document
+// with word and definition fields and send that to the browser
+app.get("/words", function (request, response) {
     // execute a query on our database
-    await ns.getAll().strings()
-      .then(keys => {
-        words=[]
-        for (const [w,d] of Object.entries(keys)) {
-          words.push( { "word" : w , "definition" : d  } );
-        }     
-        response.send(words);
-    })
-    .catch(reason => console.error(reason));    
-});
+    etcd.getAll().strings().then((values) => {
+      let words = [];
+      for (const key in values) {
+        words.push({ "word": key, "definition": values[key] });
+      }
+      response.send(words);
+    }
+    ).catch((err) => {
+      console.log(err);
+      response.status(500).send(err);    
+    });
+  });
 
 
 // Now we go and listen for a connection.
-console.log("Now listening on localhost:"+port);
 app.listen(port);
 
 require("cf-deployment-tracker-client").track();
