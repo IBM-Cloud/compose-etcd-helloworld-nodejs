@@ -14,102 +14,134 @@
  * limitations under the License.
  */
 
-// First add the obligatory web framework
-var express = require('express');
-var app = express();
+'use strict';
+/* jshint node:true */
 
-var bodyParser = require('body-parser');
+// Add the express web framework
+const express = require('express');
+const app = express();
+const { URL } = require('url');
 
+// Use body-parser to handle the PUT data
+const bodyParser = require('body-parser');
 app.use(bodyParser.urlencoded({
-  extended: false
+    extended: false
 }));
+
+// Then we'll pull in the database client library
+const { Etcd3 } = require('etcd3');
 
 // Util is handy to have around, so thats why that's here.
 const util = require('util')
-    // and so is assert
+
+// and so is assert
 const assert = require('assert');
 
 // We want to extract the port to publish our app on
-var port = process.env.PORT || 8080;
-
-// Then we'll pull in the database client library
-var Etcd = require('node-etcd');
+let port = process.env.PORT || 8080;
 
 // Now lets get cfenv and ask it to parse the environment variable
-var cfenv = require('cfenv');
-var appenv = cfenv.getAppEnv();
+const cfenv = require('cfenv');
+
+// load local VCAP configuration  and service credentials
+let vcapLocal;
+try {
+  vcapLocal = require('./vcap-local.json');
+  console.log("Loaded local VCAP");
+} catch (e) { 
+    // console.log(e)
+}
+
+const appEnvOpts = vcapLocal ? { vcap: vcapLocal} : {}
+const appEnv = cfenv.getAppEnv(appEnvOpts);
 
 // Within the application environment (appenv) there's a services object
-var services = appenv.services;
+let services = appEnv.services;
 
 // The services object is a map named by service so we extract the one for etcd
-var etcd_services = services["compose-for-etcd"];
+let etcd_services = services["compose-for-etcd"];
 
 // This check ensures there is a services for etcd databases
 assert(!util.isUndefined(etcd_services), "Must be bound to compose-for-etcd services");
 
 // We now take the first bound etcd service and extract it's credentials object
-var credentials = etcd_services[0].credentials;
+let credentials = etcd_services[0].credentials;
 
-// Within the credentials, an entry ca_certificate_base64 contains the SSL pinning key
-// We convert that from a string into a Buffer entry in an array which we use when
-// connecting.
-var ca = new Buffer(credentials.ca_certificate_base64, 'base64');
-//var connectionString = credentials.uri;
-
-// We want to parse uri-cli to get username, password, database name, server, port
+// We want to parse uri_cli from the credentials to get endpoints and username and password 
 // So we can use those to connect to the database
+let parts = credentials.uri_cli.split(" ");
 
-var parts = credentials.uri_cli.split(" ");
-var hosts = parts[5].split(",");
-var userpass = parts[7].split(":");
-var auth = {
-    user: userpass[0],
-    pass: userpass[1]
-};
-
+let endpoints = parts[2].split("=")[1];
+let usercred = parts[3].split("=");
+let userpass = usercred[1].split(":");
 
 // Create auth credentials
-var opts = {
-    auth: auth,
-    ca: ca
-}
+let opts = {
+  hosts: endpoints.split(","),
+  auth: {
+      username: userpass[0],
+      password: userpass[1]
+  }
+};
+
+var etcd = new Etcd3(opts).namespace("/example/words/");
 
 // We can now set up our web server. First up we set it to serve static pages
 app.use(express.static(__dirname + '/public'));
 
-app.put("/words", function(request, response) {
-  // set up a new client using our config details
-  var etcd = new Etcd(hosts, opts);
-  // execute a query on our database
-  etcd.set(request.body.word,request.body.definition,function(err,result) {
-    if (err) throw err;
-    response.send("ok");
-  });
-
-});
-
-// Read from the database when someone visits /words
-app.get("/words", function(request, response) {
-    // set up a new client using our config details
-    var etcd = new Etcd(hosts, opts);
-    // execute a query on our database
-    etcd.get('/', function(err, result) {
-      if (err) {
-        response.status(500).send(err);
-      } else {
-        // get the words from the index
-        var words = [];
-        result.node.nodes.forEach(function(word){
-          words.push( { "word" : word.key , "definition" : word.value  } );
+// Add a word to the database
+function addWord(word, definition) {
+    return new Promise(function(resolve, reject) {
+        etcd.put(word).value(definition).then(() => {
+            resolve();
+        }).catch((err) => {
+            reject(err);
         });
-        response.send(words);
-      }
     });
+}
+
+// Get words from the database
+function getWords() {
+    return new Promise(function(resolve, reject) {
+        etcd.getAll().strings().then((values) => {
+            let words = [];
+            for (const key in values) {
+                words.push({ "word": key, "definition": values[key] });
+            }
+            resolve(words);
+        }).catch((err) => {
+            reject(err);
+        });
+    });
+}
+
+// The user has clicked submit to add a word and definition to the database
+// Send the data to the addWord function and send a response if successful
+app.put("/words", function(request, response) {
+    addWord(request.body.word, request.body.definition)
+        .then(function(resp) {
+            response.send(resp);
+        })
+        .catch(function(err) {
+            console.log(err);
+            response.status(500).send(err);
+        });
 });
 
+// Read from the database when the page is loaded or after a word is successfully added
+// Use the getWords function to get a list of words and definitions from the database
+app.get("/words", function(request, response) {
+    getWords()
+        .then(function(words) {
+            response.send(words);
+        })
+        .catch(function(err) {
+            console.log(err);
+            response.status(500).send(err);
+        });
+});
 
-// Now we go and listen for a connection.
-app.listen(port);
-
-require("cf-deployment-tracker-client").track();
+// Listen for a connection.
+app.listen(port, function() {
+    console.log('Server is listening on port ' + port);
+});
