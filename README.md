@@ -29,7 +29,7 @@ compose-etcd-helloworld-nodejs is a sample IBM Cloud application which shows you
 5. Clone the app to your local environment from your terminal using the following command:
 
   ```
-  git clone https://github.com/IBM-Bluemix/compose-etcd-helloworld-nodejs.git
+  git clone https://github.com/IBM-Cloud/compose-etcd-helloworld-nodejs.git
   ```
 
 6. `cd` into this newly created directory
